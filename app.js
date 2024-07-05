@@ -2,28 +2,10 @@ const RSSParser = require('rss-parser');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const id3 = require('node-id3');
 
-const rssUrls = [
-    'https://www.ivoox.com/feed_fg_f12357605_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1843721_filtro_1.xml',
-    'https://elpodcastparadormir.com/feed/podcast/el-podcast-para-dormir',
-    'https://www.ivoox.com/feed_fg_f11130793_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f12266152_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1976275_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f12193550_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1191283_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f11734686_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1620618_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1881887_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f12340091_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f11902751_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f1617557_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f11544697_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f11721371_filtro_1.xml',
-    'https://www.ivoox.com/feed_fg_f12260376_filtro_1.xml',
-];
-
-const downloadDirectory = 'exp/podcast_episodes';
+const podcastJsonFile = 'shows_db.json';
+const downloadDirectory = 'podcast_episodes';
 
 if (!fs.existsSync(downloadDirectory)) {
     fs.mkdirSync(downloadDirectory);
@@ -34,45 +16,70 @@ function isEpisodeDownloaded(fileName) {
     return fs.existsSync(filePath);
 }
 
-async function downloadPodcastEpisode(episodeUrl, fileName) {
+async function downloadPodcastEpisode(episodeUrl, fileName, metadata) {
     try {
         const response = await axios.get(episodeUrl, { responseType: 'arraybuffer' });
         const filePath = path.join(downloadDirectory, `${fileName}.mp3`);
         fs.writeFileSync(filePath, response.data);
         console.log(`Downloaded: ${fileName}`);
+
+        // Add ID3 tags
+        const tags = {
+            title: metadata.title,
+            artist: metadata.artist,
+            album: metadata.album,
+            trackNumber: metadata.trackNumber,
+            genre: metadata.genre,
+            year: metadata.year
+        };
+        id3.write(tags, filePath);
+        console.log(`Tagged: ${fileName}`);
     } catch (error) {
         console.error(`Failed to download: ${fileName}`, error);
     }
 }
 
 async function fetchAndDownloadLatestEpisodes() {
-    const parser = new RSSParser();
+    try {
+        const podcastJson = JSON.parse(fs.readFileSync(podcastJsonFile, 'utf8'));
 
-    for (const url of rssUrls) {
-        try {
-            const feed = await parser.parseURL(url);
-            if (feed.items.length > 0) {
-                const latestEpisodes = feed.items.slice(0, 3); // Get the 3 latest episodes
-                for (const episode of latestEpisodes) {
-                    const programName = feed.title;
-                    const episodeTitle = episode.title;
-                    const episodeUrl = episode.enclosure.url;
-                    const episodeNumber = episode.itunes && episode.itunes.episode ? episode.itunes.episode : 'unknown';
+        const parser = new RSSParser();
+
+        for (const podcast of podcastJson) {
+            try {
+                const feed = await parser.parseURL(podcast.rss);
+                if (feed.items.length > 0) {
+                    const latestEpisode = feed.items[0]; // Get the latest episode
+                    const programName = podcast.nombre;
+                    const episodeTitle = latestEpisode.title;
+                    const episodeUrl = latestEpisode.enclosure.url;
+                    const episodeNumber = latestEpisode.itunes && latestEpisode.itunes.episode ? latestEpisode.itunes.episode : 'unknown';
+                    const episodeDate = latestEpisode.pubDate ? new Date(latestEpisode.pubDate).getFullYear().toString() : 'unknown';
 
                     const fileName = `${programName.replace(/[^a-zA-Z0-9]/g, '_')} - ${episodeNumber} - ${episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
                     if (!isEpisodeDownloaded(fileName)) {
-                        await downloadPodcastEpisode(episodeUrl, fileName);
+                        const metadata = {
+                            title: episodeTitle,
+                            artist: programName,
+                            album: programName,
+                            trackNumber: episodeNumber,
+                            genre: 'Podcast',
+                            year: episodeDate
+                        };
+                        await downloadPodcastEpisode(episodeUrl, fileName, metadata);
                     } else {
                         console.log(`Episode already downloaded: ${fileName}`);
                     }
+                } else {
+                    console.log(`No episodes found in feed: ${podcast.rss}`);
                 }
-            } else {
-                console.log(`No episodes found in feed: ${url}`);
+            } catch (error) {
+                console.error(`Failed to fetch feed: ${podcast.rss}`, error);
             }
-        } catch (error) {
-            console.error(`Failed to fetch feed: ${url}`, error);
         }
+    } catch (error) {
+        console.error(`Failed to read JSON file: ${podcastJsonFile}`, error);
     }
 }
 
