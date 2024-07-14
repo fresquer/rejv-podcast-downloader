@@ -23,7 +23,6 @@ async function downloadPodcastEpisode(episodeUrl, fileName, metadata) {
         fs.writeFileSync(filePath, response.data);
         console.log(`Downloaded: ${fileName}`);
 
-        // Add ID3 tags
         const tags = {
             title: metadata.title,
             artist: metadata.artist,
@@ -35,21 +34,20 @@ async function downloadPodcastEpisode(episodeUrl, fileName, metadata) {
         id3.write(tags, filePath);
         console.log(`Tagged: ${fileName}`);
     } catch (error) {
-        console.error(`Failed to download: ${fileName}`, error);
+        console.error(`Failed to download or tag: ${fileName}`, error);
     }
 }
 
 async function fetchAndDownloadLatestEpisodes() {
     try {
         const podcastJson = JSON.parse(fs.readFileSync(podcastJsonFile, 'utf8'));
-
         const parser = new RSSParser();
 
         for (const podcast of podcastJson) {
             try {
                 const feed = await parser.parseURL(podcast.rss);
                 if (feed.items.length > 0) {
-                    const latestEpisode = feed.items[0]; // Get the latest episode
+                    const latestEpisode = feed.items[0];
                     const programName = podcast.nombre;
                     const episodeTitle = latestEpisode.title;
                     const episodeUrl = latestEpisode.enclosure.url;
@@ -68,16 +66,13 @@ async function fetchAndDownloadLatestEpisodes() {
                             year: episodeDate
                         };
                         await downloadPodcastEpisode(episodeUrl, fileName, metadata);
-                    } else {
-                        console.log(`Episode already downloaded: ${fileName}`);
                     }
-                } else {
-                    console.log(`No episodes found in feed: ${podcast.rss}`);
                 }
             } catch (error) {
                 console.error(`Failed to fetch feed: ${podcast.rss}`, error);
             }
         }
+        console.log('All episodes processed successfully.');
     } catch (error) {
         console.error(`Failed to read JSON file: ${podcastJsonFile}`, error);
     }
