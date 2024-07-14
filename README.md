@@ -10,33 +10,34 @@ This project is a Node.js script that automatically downloads and tags podcast e
 ## Installation
 
 1. Clone this repository:
-    ```bash
-    git clone https://github.com/your-username/podcast-downloader.git
-    cd podcast-downloader
-    ```
+
+   ```bash
+   git clone https://github.com/your-username/rejv-podcast-downloader.git
+   cd rejv-podcast-downloader
+   ```
 
 2. Install the dependencies:
-    ```bash
-    npm install
-    ```
+   ```bash
+   npm install
+   ```
 
 ## Usage
 
 1. Ensure the `shows_db.json` file contains the list of podcasts you want to download. The format for each podcast object in the JSON is as follows:
 
-    ```json
-    [
-        {
-            "name": "Podcast Name",
-            "rss": "URL of the podcast's RSS feed"
-        }
-    ]
-    ```
+   ```json
+   [
+     {
+       "name": "Podcast Name",
+       "rss": "URL of the podcast's RSS feed"
+     }
+   ]
+   ```
 
 2. Run the script:
-    ```bash
-    node podcast_downloader.js
-    ```
+   ```bash
+   node podcast_downloader.js
+   ```
 
 ## Project Structure
 
