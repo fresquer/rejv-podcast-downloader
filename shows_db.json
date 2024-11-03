@@ -55,11 +55,6 @@
     "rss": "https://www.ivoox.com/feed_fg_f1881887_filtro_1.xml"
   },
   {
-    "nombre": "Podcast Corrientes",
-    "key": "podcast-corrientes",
-    "rss": "https://www.ivoox.com/feed_fg_f12340091_filtro_1.xml"
-  },
-  {
     "nombre": "Que baje Dios y lo vea",
     "key": "que-baje-dios-y-lo-vea",
     "rss": "https://www.ivoox.com/feed_fg_f11902751_filtro_1.xml"
@@ -103,5 +98,25 @@
     "nombre": "La voz en el tejado",
     "key": "la-voz-en-el-tejado",
     "rss": "https://www.ivoox.com/feed_fg_f12373342_filtro_1.xml"
+  },
+  {
+    "nombre": "Green conection",
+    "key": "green-conection",
+    "rss": "https://www.ivoox.com/feed_fg_f12477404_filtro_1.xml"
+  },
+  {
+    "nombre": "A quién no le va a gustah...",
+    "key": "a-quien-no-le-va-a-gustah...",
+    "rss": "https://www.ivoox.com/feed_fg_f12475290_filtro_1.xml"
+  },
+  {
+    "nombre": "Por la Gloria de mi Madre ReMiX",
+    "key": "por-la-gloria-de-mi-madre-remix",
+    "rss": "https://www.ivoox.com/feed_fg_f12475290_filtro_1.xml"
+  },
+  {
+    "nombre": "LA MARINA SUR",
+    "key": "la-marina-sur",
+    "rss": "https://www.ivoox.com/feed_fg_f12483600_filtro_1.xml"
   }
 ]
