@@ -5,13 +5,15 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run-sync": "node app.js"
+    "run-sync": "node app.js",
+    "run-all": "node allepisodes.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.2",
     "node-id3": "^0.2.6",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "xml2js": "^0.6.2"
   }
 }

@@ -110,7 +110,7 @@
     "rss": "https://www.ivoox.com/feed_fg_f12475290_filtro_1.xml"
   },
   {
-    "nombre": "Por la Gloria de mi Madre ReMiX",
+    "nombre": "Por la Gloria de mi Madre  iX",
     "key": "por-la-gloria-de-mi-madre-remix",
     "rss": "https://www.ivoox.com/feed_fg_f12475290_filtro_1.xml"
   },
@@ -118,5 +118,31 @@
     "nombre": "LA MARINA SUR",
     "key": "la-marina-sur",
     "rss": "https://www.ivoox.com/feed_fg_f12483600_filtro_1.xml"
+  },
+  {
+    "nombre": "Objetivo 80",
+    "key": "objetivo-80",
+    "rss": "https://www.ivoox.com/feed_fg_f12487605_filtro_1.xml"
+  },
+  {
+    "nombre": "Afició Grogueta",
+    "key": "afició-grogueta",
+    "rss": "https://www.ivoox.com/feed_fg_f12530928_filtro_1.xml"
+  },
+  {
+    "nombre": "ECOS DE LA HISTORIA",
+    "key": "ecos-de-la-historia",
+    "rss": "https://www.ivoox.com/feed_fg_f12530921_filtro_1.xml"
+  },
+  {
+    "nombre": "LOS RELATOS PERDIDOS",
+    "key": "los-relatos-perdidos",
+    "rss": "https://www.ivoox.com/feed_fg_f12490538_filtro_1.xml"
+  },
+  {
+    "nombre": "Los favorecidos",
+    "key": "los-desfavorecidos",
+    "rss": "https://www.ivoox.com/feed_fg_f12495203_filtro_1.xml"
   }
+
 ]
