@@ -130,3 +130,5 @@ dist
 .pnp.*
 
 podcast_episodes/
+episodes.json
+.cursor/

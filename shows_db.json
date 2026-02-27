@@ -115,11 +115,6 @@
     "rss": "https://www.ivoox.com/feed_fg_f12475290_filtro_1.xml"
   },
   {
-    "nombre": "LA MARINA SUR",
-    "key": "la-marina-sur",
-    "rss": "https://www.ivoox.com/feed_fg_f12483600_filtro_1.xml"
-  },
-  {
     "nombre": "Objetivo 80",
     "key": "objetivo-80",
     "rss": "https://www.ivoox.com/feed_fg_f12487605_filtro_1.xml"
@@ -143,6 +138,21 @@
     "nombre": "Los favorecidos",
     "key": "los-desfavorecidos",
     "rss": "https://www.ivoox.com/feed_fg_f12495203_filtro_1.xml"
+  },
+  {
+    "nombre": "DRIFT Radio",
+    "key": "drift-radio",
+    "rss": "https://feeds.ivoox.com/feed_fg_f12826975_filtro_1.xml"
+  },
+  {
+    "nombre": "Onda electrónica",
+    "key": "onda-electronica",
+    "rss": "https://feeds.ivoox.com/feed_fg_f12461352_filtro_1.xml"
+  },
+  {
+    "nombre": "Ron Valencia Radio",
+    "key": "ron-valencia-radio",
+    "rss": "https://feeds.ivoox.com/feed_fg_f12506191_filtro_1.xml"
   }
 
 ]
