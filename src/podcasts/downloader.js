@@ -33,7 +33,12 @@ function sanitizeFileName(str) {
 
 async function downloadAndTagEpisode(episodeUrl, fileName, metadata) {
     try {
-        const response = await axios.get(episodeUrl, { responseType: 'arraybuffer' });
+        const response = await axios.get(episodeUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+        });
         const filePath = path.join(downloadDir, `${fileName}.mp3`);
         fs.writeFileSync(filePath, response.data);
         logger.info(`Downloaded: ${fileName}`);

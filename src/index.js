@@ -1,3 +1,8 @@
+/**
+ * Entrada principal: descarga últimos episodios de cada podcast y sincroniza con AzuraCast.
+ * Sync por copia local (AZURACAST_LOCAL_MEDIA_PATH) o por API (AZURACAST_API_KEY).
+ */
+require('dotenv').config();
 const { loadShows } = require('./config');
 const { fetchAndDownloadLatest, getLocalMp3Files, downloadDir } = require('./podcasts/downloader');
 const { syncMedia } = require('./azuracast/client');
