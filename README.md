@@ -127,6 +127,31 @@ Para que se refresque solo cada 24 horas:
 
    Ajusta `/ruta/completa/rejv-last-episodes-sync` y la ruta de `node` si es necesario. Con `.env` en la raíz, el script lo carga con `dotenv` (permisos recomendados: `chmod 600 .env`).
 
+## Ejecución con PM2
+
+Alternativa a cron: PM2 puede ejecutar el sync cada 24h usando el archivo de configuración incluido.
+
+1. Instala PM2 (global): `npm install -g pm2`
+2. Crea la carpeta de logs (opcional): `mkdir logs`
+3. Arranca la app con el ecosistema:
+
+   ```bash
+   pm2 start ecosystem.config.cjs
+   ```
+
+4. Para que PM2 arranque al reiniciar el servidor: `pm2 startup` y luego `pm2 save`
+
+Al hacer `pm2 start`, el sync se ejecuta **en ese momento** (primera vez). Luego está programado para repetirse **cada día a las 3:00** (`cron_restart: '0 3 * * *'`). Cuando el script termina, no se reinicia hasta la próxima hora programada.
+
+Comandos útiles:
+
+- `pm2 list` — ver estado
+- `pm2 logs rejv-sync` — ver logs en tiempo real
+- `pm2 restart rejv-sync` — ejecutar un sync manual ahora (y volver a programar el siguiente cron)
+- `pm2 delete rejv-sync` — quitar el proceso de PM2
+
+Para cambiar la hora, edita `cron_restart` en `ecosystem.config.cjs` (formato cron: minuto hora día-mes mes día-semana).
+
 ## Estructura del proyecto
 
 ```
