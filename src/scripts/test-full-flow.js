@@ -1,11 +1,12 @@
 /**
- * Test rápido del flujo completo: 1 podcast, descarga + sync (local o API).
+ * Test rápido del flujo completo: 1 podcast, descarga + sync (SFTP, local o API).
  *
  * Uso: npm run test-flow   o   node src/scripts/test-full-flow.js
  *
  * Variables de entorno (.env):
+ *   AZURACAST_SFTP_*            → subida por SFTP (host, user, password, remote path).
  *   AZURACAST_LOCAL_MEDIA_PATH  → copia a disco (mismo servidor).
- *   AZURACAST_API_KEY           → subida por API (si no usas LOCAL_MEDIA_PATH).
+ *   AZURACAST_API_KEY           → subida por API.
  *   DRY_RUN=1                   → solo descarga, no sync ni Discord.
  */
 require('dotenv').config();
@@ -25,9 +26,9 @@ function formatDate() {
 async function run() {
     logger.info('=== Test flujo completo (1 podcast) ===');
 
-    let podcasts = loadShows();
+    let podcasts = await loadShows();
     if (podcasts.length === 0) {
-        throw new Error('shows_db.json está vacío o no tiene podcasts.');
+        throw new Error('La API de shows no devolvió podcasts con RSS.');
     }
     podcasts = podcasts.slice(0, 1);
     logger.info(`Usando 1 podcast: ${podcasts[0].nombre}`);
@@ -47,10 +48,11 @@ async function run() {
         return;
     }
 
+    const hasSftp = !!(process.env.AZURACAST_SFTP_HOST && process.env.AZURACAST_SFTP_REMOTE_PATH && process.env.AZURACAST_SFTP_USER && process.env.AZURACAST_SFTP_PASSWORD);
     const hasApiKey = !!process.env.AZURACAST_API_KEY;
     const hasLocalPath = !!process.env.AZURACAST_LOCAL_MEDIA_PATH;
-    if (!hasApiKey && !hasLocalPath) {
-        logger.warn('Ni AZURACAST_API_KEY ni AZURACAST_LOCAL_MEDIA_PATH definidos → No se sincroniza.');
+    if (!hasSftp && !hasApiKey && !hasLocalPath) {
+        logger.warn('Ningún método de sync definido (SFTP, LOCAL_MEDIA_PATH o API_KEY) → No se sincroniza.');
         logger.info('=== Test OK (descarga completada) ===');
         await sendDiscordMessage(`🧪 **Rejv test** – Solo descarga OK – ${formatDate()}`);
         return;

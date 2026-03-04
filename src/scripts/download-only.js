@@ -8,7 +8,7 @@ const { fetchAndDownloadLatest } = require('../podcasts/downloader');
 const logger = require('../logger');
 
 async function run() {
-    const podcasts = loadShows();
+    const podcasts = await loadShows();
     await fetchAndDownloadLatest(podcasts);
     logger.info('Descarga finalizada.');
 }

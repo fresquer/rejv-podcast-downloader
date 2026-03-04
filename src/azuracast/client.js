@@ -1,12 +1,14 @@
 /**
  * Sincronización con AzuraCast:
- * - Si env.azuracastLocalMediaPath está definido → copia MP3 a disco (mismo servidor, sin HTTP).
- * - Si no → usa la API (listar, borrar, subir por multipart).
+ * - Si env.sftpHost + sftpRemotePath → subida por SFTP.
+ * - Si env.azuracastLocalMediaPath → copia MP3 a disco (mismo servidor).
+ * - Si no → API (listar, borrar, subir por multipart).
  */
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
+const SftpClient = require('ssh2-sftp-client');
 const { env, getApiBase } = require('../config');
 const logger = require('../logger');
 
@@ -77,7 +79,7 @@ async function uploadFile(stationId, localFilePath, filename) {
 
 /**
  * Sincroniza copiando los MP3 a la carpeta local de medios (mismo servidor).
- * Evita HTTP y límites 413. La carpeta debe ser la de medios de la estación (o una subcarpeta).
+ * Incremental: solo borra archivos que ya no están en la lista y solo copia los nuevos o modificados.
  */
 function syncMediaLocal(localDir, mp3Filenames) {
     const destDir = env.azuracastLocalMediaPath;
@@ -88,95 +90,178 @@ function syncMediaLocal(localDir, mp3Filenames) {
         logger.info(`Carpeta de medios local creada: ${destDir}`);
     }
 
-    const existing = fs.readdirSync(destDir);
-    for (const name of existing) {
-        const full = path.join(destDir, name);
-        if (fs.statSync(full).isFile()) {
-            fs.unlinkSync(full);
-        }
-    }
-    if (existing.length > 0) {
-        logger.info(`Limpiada carpeta local (${existing.length} archivos anteriores)`);
-    }
+    const wantSet = new Set(mp3Filenames);
+    const existing = fs.readdirSync(destDir).filter((n) => fs.statSync(path.join(destDir, n)).isFile());
 
-    if (mp3Filenames.length === 0) {
-        logger.info('No hay episodios para copiar.');
-        return true;
+    const toRemove = existing.filter((n) => !wantSet.has(n));
+    for (const name of toRemove) {
+        fs.unlinkSync(path.join(destDir, name));
+        logger.info(`Eliminado (local): ${name}`);
     }
+    if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos`);
 
-    logger.info(`Copiando ${mp3Filenames.length} episodios a ${destDir}...`);
-    for (let i = 0; i < mp3Filenames.length; i++) {
-        const filename = mp3Filenames[i];
+    let copied = 0;
+    for (const filename of mp3Filenames) {
         const src = path.join(localDir, filename);
         const dest = path.join(destDir, filename);
-        fs.copyFileSync(src, dest);
-        const fileSizeMB = (fs.statSync(dest).size / (1024 * 1024)).toFixed(2);
-        logger.info(`[${i + 1}/${mp3Filenames.length}] Copiado: ${filename} (${fileSizeMB} MB)`);
+        const needCopy = !fs.existsSync(dest) || fs.statSync(src).size !== fs.statSync(dest).size;
+        if (needCopy) {
+            fs.copyFileSync(src, dest);
+            const fileSizeMB = (fs.statSync(dest).size / (1024 * 1024)).toFixed(2);
+            logger.info(`Copiado: ${filename} (${fileSizeMB} MB)`);
+            copied++;
+        }
     }
-    logger.info(`Sincronización local completada: ${mp3Filenames.length} episodios`);
-    return true;
+    if (copied > 0) logger.info(`Sincronización local: ${copied} archivo(s) nuevo(s)/actualizado(s)`);
+    else if (toRemove.length === 0) logger.info('Sincronización local: sin cambios.');
+    return { method: 'local', uploaded: copied, removed: toRemove.length };
+}
+
+/**
+ * Sincroniza subiendo los MP3 por SFTP al servidor AzuraCast.
+ * Incremental: solo elimina en remoto los que ya no están en la lista y solo sube los nuevos.
+ */
+async function syncMediaSftp(localDir, mp3Filenames) {
+    if (!env.sftpHost || !env.sftpRemotePath) return false;
+
+    const sftp = new SftpClient();
+    try {
+        await sftp.connect({
+            host: env.sftpHost,
+            port: env.sftpPort,
+            username: env.sftpUser,
+            password: env.sftpPassword,
+        });
+        logger.info(`SFTP conectado a ${env.sftpHost}, ruta: ${env.sftpRemotePath}`);
+
+        const remotePath = env.sftpRemotePath.replace(/\/$/, '');
+        let list = [];
+        try {
+            list = await sftp.list(remotePath);
+        } catch (e) {
+            const msg = (e.message || '').toLowerCase();
+            if (msg.includes('no such file') || msg.includes('no such directory') || msg.includes('not found')) {
+                await sftp.mkdir(remotePath, true);
+                logger.info(`Carpeta remota creada: ${remotePath}`);
+            } else {
+                throw e;
+            }
+        }
+        const wantSet = new Set(mp3Filenames);
+        const remoteFiles = (list || []).filter((f) => f.type === '-' && f.name);
+        const toRemove = remoteFiles.filter((f) => !wantSet.has(f.name));
+        for (const f of toRemove) {
+            const filePath = remotePath + '/' + f.name;
+            await sftp.delete(filePath);
+            logger.info(`Eliminado (SFTP): ${f.name}`);
+        }
+        if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos en remoto`);
+
+        let uploaded = 0;
+        for (const filename of mp3Filenames) {
+            const localPath = path.join(localDir, filename);
+            const remoteFile = remotePath + '/' + filename;
+            const exists = remoteFiles.some((f) => f.name === filename);
+            if (!exists) {
+                await sftp.put(localPath, remoteFile);
+                const fileSizeMB = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(2);
+                logger.info(`Subido (SFTP): ${filename} (${fileSizeMB} MB)`);
+                uploaded++;
+            }
+        }
+        if (uploaded > 0) logger.info(`SFTP: ${uploaded} archivo(s) nuevo(s) subido(s)`);
+        else if (toRemove.length === 0) logger.info('SFTP: sin cambios.');
+        return { method: 'sftp', uploaded, removed: toRemove.length };
+    } finally {
+        await sftp.end();
+    }
+}
+
+/**
+ * Reinicia los servicios de la estación (AutoDJ, etc.) para que cargue los medios nuevos.
+ * Solo se ejecuta si AZURACAST_API_KEY está definida.
+ */
+async function restartStationIfConfigured() {
+    if (!env.azuracastApiKey) return;
+    try {
+        const stationId = await resolveStationId();
+        const api = createApiClient();
+        await api.post(`/station/${stationId}/restart`);
+        logger.info('Estación reiniciada (servicios de retransmisión actualizados).');
+    } catch (err) {
+        logger.warn('No se pudo reiniciar la estación (¿API key con permiso?):', err.response?.data?.message || err.message);
+    }
 }
 
 /**
  * Sincroniza con AzuraCast: borra todos los archivos actuales y sube los MP3 de la carpeta indicada.
- * Si AZURACAST_LOCAL_MEDIA_PATH está definido, copia en disco (mismo servidor) y no usa la API.
+ * Orden: SFTP (si config) → copia local (si config) → API.
+ * Si hay API key, tras subir por SFTP o copia local se reinicia la estación para que cargue los cambios.
  * @param {string} localDir - Carpeta con los MP3 (ej. podcast_episodes)
  * @param {string[]} mp3Filenames - Lista de nombres de archivo .mp3
  */
 async function syncMedia(localDir, mp3Filenames) {
-    if (syncMediaLocal(localDir, mp3Filenames)) {
-        return;
+    const sftpResult = await syncMediaSftp(localDir, mp3Filenames);
+    if (sftpResult) {
+        await restartStationIfConfigured();
+        return sftpResult;
+    }
+    const localResult = syncMediaLocal(localDir, mp3Filenames);
+    if (localResult) {
+        await restartStationIfConfigured();
+        return localResult;
     }
 
     if (!env.azuracastApiKey) {
-        throw new Error('AZURACAST_API_KEY es obligatorio (o define AZURACAST_LOCAL_MEDIA_PATH para copia local).');
+        throw new Error('Configura AZURACAST_SFTP_*, AZURACAST_LOCAL_MEDIA_PATH o AZURACAST_API_KEY.');
     }
 
     const stationId = await resolveStationId();
-    const api = createApiClient();
 
-    logger.info('Sincronización con AzuraCast (API)');
+    logger.info('Sincronización con AzuraCast (API, incremental)');
 
     const files = await listFiles(stationId);
+    const wantSet = new Set(mp3Filenames);
+    const serverByBasename = new Map();
+    for (const file of files) {
+        const name = path.basename(file.path || file.name || file.text || '');
+        if (name) serverByBasename.set(name, file);
+    }
 
-    if (files.length > 0) {
-        logger.info(`Eliminando ${files.length} archivos actuales en AzuraCast...`);
-        for (const file of files) {
-            const mediaId = file.id ?? file.media_id;
-            if (mediaId == null) continue;
-            try {
-                await deleteFile(stationId, mediaId);
-                logger.info(`Eliminado: ${file.path || file.text || mediaId}`);
-            } catch (err) {
-                logger.error(`Error eliminando ${mediaId}:`, err.response?.data?.message || err.message);
-            }
+    const toRemove = files.filter((f) => {
+        const name = path.basename(f.path || f.name || f.text || '');
+        return name && !wantSet.has(name);
+    });
+    for (const file of toRemove) {
+        const mediaId = file.id ?? file.media_id;
+        if (mediaId == null) continue;
+        try {
+            await deleteFile(stationId, mediaId);
+            logger.info(`Eliminado: ${file.path || file.text || mediaId}`);
+        } catch (err) {
+            logger.error(`Error eliminando ${mediaId}:`, err.response?.data?.message || err.message);
         }
-        logger.info('Archivos anteriores eliminados');
-    } else {
-        logger.info('No hay archivos previos que eliminar.');
     }
+    if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos`);
 
-    if (mp3Filenames.length === 0) {
-        logger.info('No hay episodios locales para subir.');
-        return;
-    }
-
-    logger.info(`Subiendo ${mp3Filenames.length} episodios...`);
-
-    for (let i = 0; i < mp3Filenames.length; i++) {
-        const filename = mp3Filenames[i];
+    const toUpload = mp3Filenames.filter((name) => !serverByBasename.has(name));
+    let uploaded = 0;
+    for (let i = 0; i < toUpload.length; i++) {
+        const filename = toUpload[i];
         const localPath = path.join(localDir, filename);
         const fileSizeMB = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(2);
-
         try {
             await uploadFile(stationId, localPath, filename);
-            logger.info(`[${i + 1}/${mp3Filenames.length}] Subido: ${filename} (${fileSizeMB} MB)`);
+            logger.info(`[${i + 1}/${toUpload.length}] Subido: ${filename} (${fileSizeMB} MB)`);
+            uploaded++;
         } catch (err) {
             logger.error(`Error subiendo ${filename}:`, err.response?.data?.message || err.message);
         }
     }
-
-    logger.info(`Sincronización completada: ${mp3Filenames.length} episodios en AzuraCast`);
+    if (uploaded > 0) logger.info(`Subidos ${uploaded} archivo(s) nuevo(s)`);
+    else if (toRemove.length === 0) logger.info('Sin cambios en AzuraCast.');
+    await restartStationIfConfigured();
+    return { method: 'api', uploaded, removed: toRemove.length };
 }
 
 module.exports = {

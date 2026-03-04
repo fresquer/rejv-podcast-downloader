@@ -2,7 +2,7 @@
 
 Script que descarga los últimos episodios de cada podcast desde sus RSS, los etiqueta y los sincroniza con **AzuraCast** (lista de retransmisión). Pensado para ejecutarse cada 24h en un VPS sin intervención manual.
 
-**Sincronización con AzuraCast:** puede hacerse por **copia directa a disco** (mismo servidor, recomendado) o por **API HTTP**. Ver variables de entorno más abajo.
+**Sincronización con AzuraCast:** por **SFTP** (recomendado), **copia directa a disco** (mismo servidor) o **API HTTP**. Ver variables de entorno más abajo.
 
 ## Requisitos
 
@@ -23,30 +23,52 @@ Script que descarga los últimos episodios de cada podcast desde sus RSS, los et
 
 ## Configuración (variables de entorno)
 
-Copia `.env.example` a `.env` y rellena los valores. Para sincronizar con AzuraCast necesitas **una de estas dos**:
+Copia `.env.example` a `.env` y rellena los valores. Para sincronizar con AzuraCast necesitas **una de estas tres**:
 
-| Variable | Cuándo | Descripción |
-|----------|--------|-------------|
-| **`AZURACAST_LOCAL_MEDIA_PATH`** | **Mismo servidor (recomendado)** | Ruta en disco de la carpeta de medios, ej: `/var/azuracast/stations/radio_espai_jove/media/retransmision`. Los MP3 se copian aquí directamente (sin HTTP, sin límite 413). |
-| **`AZURACAST_API_KEY`** | Otro servidor / subida por API | API Key de AzuraCast (panel → "My API Keys", permiso "Manage Station Media"). Obligatoria si no usas `AZURACAST_LOCAL_MEDIA_PATH`. |
+| Variable / método | Cuándo | Descripción |
+|-------------------|--------|-------------|
+| **`AZURACAST_SFTP_*`** | **Subida por SFTP (recomendado)** | Host, usuario, contraseña y ruta remota. AzuraCast expone SFTP (p. ej. Docker). Sin límite 413. |
+| **`AZURACAST_LOCAL_MEDIA_PATH`** | Mismo servidor | Ruta en disco de la carpeta de medios. Copia directa, sin red. |
+| **`AZURACAST_API_KEY`** | Subida por API | API Key de AzuraCast. Puede dar 413 con archivos grandes si nginx limita el body. |
 
-Otras variables:
+Variables SFTP (todas obligatorias si usas SFTP):
 
 | Variable | Descripción |
 |----------|-------------|
-| `AZURACAST_URL` | URL base de AzuraCast. Por defecto: `https://live.radioespaijove.es` (solo para modo API). |
-| `AZURACAST_STATION_ID` | ID de la estación (solo modo API). Si no se define, se usa la primera. |
-| `AZURACAST_UPLOAD_PATH` | Carpeta dentro de la estación, ej: `retransmision` (solo modo API). |
-| `DISCORD_WEBHOOK_URL` | URL del webhook de Discord para notificación al terminar (éxito o error). |
+| `AZURACAST_SFTP_HOST` | Host o IP del servidor SFTP (ej. del servidor AzuraCast). |
+| `AZURACAST_SFTP_PORT` | Puerto (por defecto 22). |
+| `AZURACAST_SFTP_USER` | Usuario SFTP. |
+| `AZURACAST_SFTP_PASSWORD` | Contraseña SFTP. |
+| `AZURACAST_SFTP_REMOTE_PATH` | Ruta remota de la carpeta de medios (ej. `/media/retransmision`). |
 
-Ejemplo `.env` **en el mismo servidor que AzuraCast**:
+Otras variables (API / opcionales):
+
+| Variable | Descripción |
+|----------|-------------|
+| `AZURACAST_URL` | URL base de AzuraCast (solo modo API). Por defecto: `https://live.radioespaijove.es`. |
+| `AZURACAST_STATION_ID` | ID de la estación (solo modo API). |
+| `AZURACAST_UPLOAD_PATH` | Carpeta dentro de la estación (solo modo API). |
+| `DISCORD_WEBHOOK_URL` | Webhook de Discord para notificación al terminar. |
+
+Ejemplo `.env` **con SFTP**:
+
+```env
+AZURACAST_SFTP_HOST=tu-servidor.com
+AZURACAST_SFTP_PORT=22
+AZURACAST_SFTP_USER=azuracast_user
+AZURACAST_SFTP_PASSWORD=tu_password
+AZURACAST_SFTP_REMOTE_PATH=/media/retransmision
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+Ejemplo `.env` **mismo servidor** (copia a disco):
 
 ```env
 AZURACAST_LOCAL_MEDIA_PATH=/var/azuracast/stations/radio_espai_jove/media/retransmision
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-Ejemplo `.env` **subiendo por API** (otro servidor):
+Ejemplo `.env` **subiendo por API**:
 
 ```env
 AZURACAST_API_KEY=tu_api_key
@@ -56,7 +78,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 ## Uso
 
-1. Asegúrate de que `shows_db.json` tiene la lista de podcasts con `nombre`, `key` y `rss` para cada uno.
+1. La lista de programas se obtiene de `https://radioespaijove.es/api/shows.json` (cada show con `nombre`, `key` y `rss`; solo se procesan los que tienen RSS).
 
 2. **Sincronización completa** (descarga + sync a AzuraCast por copia local o API):
 
@@ -76,7 +98,7 @@ El flujo completo:
 
 - Limpia la carpeta local `podcast_episodes/`
 - Obtiene los feeds RSS y descarga el episodio más reciente de cada podcast
-- **Sincroniza con AzuraCast:** si está definido `AZURACAST_LOCAL_MEDIA_PATH`, copia los MP3 a esa carpeta en disco; si no, usa la API (borra archivos actuales y sube los nuevos)
+- **Sincroniza con AzuraCast:** si están definidos los SFTP, sube por SFTP; si no, si está `AZURACAST_LOCAL_MEDIA_PATH`, copia a disco; si no, usa la API (borra archivos actuales y sube los nuevos)
 
 ## Ejecución cada 24h en un VPS (cron)
 
@@ -109,20 +131,19 @@ Para que se refresque solo cada 24 horas:
 
 ```
 src/
-  config.js       # Configuración (env, rutas, carga de shows_db)
+  config.js       # Configuración (env, rutas, carga de shows desde API)
   logger.js       # Logging
   index.js        # Entrada principal: orquesta descarga + sync AzuraCast
   podcasts/
     rss.js        # Obtención y parseo de feeds RSS
     downloader.js # Descarga de episodios y etiquetado ID3
   azuracast/
-    client.js     # Sync con AzuraCast: copia local (AZURACAST_LOCAL_MEDIA_PATH) o API
+    client.js     # Sync con AzuraCast: SFTP, copia local o API
   notify/
     discord.js    # Notificación al canal Discord vía webhook
   scripts/
     download-only.js   # Solo descarga (npm run run-sync)
     test-full-flow.js  # Test flujo completo con 1 podcast (npm run test-flow)
-shows_db.json    # Lista de podcasts (nombre, key, rss)
 podcast_episodes/    # MP3 antes de subir (ignorado en git)
 ```
 
@@ -142,14 +163,30 @@ AZURACAST_LOCAL_MEDIA_PATH=/var/azuracast/stations/radio_espai_jove/media/retran
 - El script vacía esa carpeta, copia los MP3 y listo. Sin HTTP, sin error 413.
 - La ruta base suele ser `/var/azuracast/stations/<nombre_estacion>/media`. Usa o crea una subcarpeta (ej. `retransmision`) y asígnala a la playlist en AzuraCast si aplica.
 
+## Playlist y reinicio (SFTP / copia local)
+
+Cuando subes por **SFTP** o **copia local**, los archivos van a una carpeta del servidor. Para que suenen en la radio:
+
+1. **Asignar la carpeta a una playlist**  
+   En AzuraCast: **Media** → gestiona carpetas → asigna la carpeta donde subes (ej. `/` o `/media/retransmision`) a la playlist de retransmisión. Así los archivos nuevos se añaden solos a esa playlist.
+
+2. **Escaneo de medios**  
+   AzuraCast ejecuta una tarea periódica (CheckMedia) que escanea la carpeta. Los archivos pueden tardar unos minutos en aparecer en la biblioteca. Si no aparecen, en el panel puedes lanzar manualmente la sincronización/tareas.
+
+3. **Reinicio de la estación**  
+   Si además defines **`AZURACAST_API_KEY`** (aunque uses SFTP o copia local), el script llamará a la API para **reiniciar la estación** después de cada subida. Así los servicios de retransmisión recargan la lista y los nuevos MP3 se empiezan a emitir sin esperar al siguiente ciclo. La API key debe tener permiso para gestionar la estación.
+
 ## Solución de problemas
 
-- **Error 413 (Payload Too Large)** al subir por API: el servidor (p. ej. nginx) limita el tamaño del body. Opciones: (1) Usar **mismo servidor** y `AZURACAST_LOCAL_MEDIA_PATH` (recomendado); (2) Aumentar `client_max_body_size` en nginx (p. ej. `100M`) y recargar nginx.
+- **Muchos 500 al descargar**: los servidores de los podcasts (p. ej. iVoox) pueden devolver 500 si reciben muchas peticiones seguidas o limitar por IP. Añade en `.env` una pausa entre podcasts, por ejemplo `DOWNLOAD_DELAY_MS=2000` (2 segundos). Así se espacian las descargas y suele bajar el número de fallos. Opcional: `DOWNLOAD_TIMEOUT_MS=120000` (2 min por archivo) para no quedarse colgado si un servidor no responde.
+
+- **Error 413 (Payload Too Large)** al subir por API: el servidor (p. ej. nginx) limita el tamaño del body. Opciones: (1) Usar **SFTP** (`AZURACAST_SFTP_*`); (2) Usar **mismo servidor** y `AZURACAST_LOCAL_MEDIA_PATH`; (3) Aumentar `client_max_body_size` en nginx (p. ej. `100M`) y recargar nginx.
 
 ## Dependencias
 
 - dotenv: carga de variables desde `.env`
 - axios: peticiones HTTP y API de AzuraCast
 - form-data: subida multipart a AzuraCast
+- ssh2-sftp-client: subida por SFTP a AzuraCast
 - node-id3: etiquetado ID3 de los MP3
 - rss-parser / xml2js: parsing de feeds RSS
