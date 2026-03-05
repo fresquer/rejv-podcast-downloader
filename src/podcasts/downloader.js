@@ -9,7 +9,6 @@ const { fetchEpisodes } = require('./rss');
 const downloadDir = env.downloadDirectory;
 
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10000;
-const IMAGE_MAX_BYTES = 1024 * 1024; // 1 MB
 
 /** Inferir MIME de imagen desde Content-Type o extensión de la URL. */
 function getImageMime(contentType, imageUrl) {
@@ -78,8 +77,6 @@ async function downloadAndTagEpisode(episodeUrl, fileName, metadata) {
             .get(metadata.imageUrl, {
                 responseType: 'arraybuffer',
                 timeout: IMAGE_DOWNLOAD_TIMEOUT_MS,
-                maxContentLength: IMAGE_MAX_BYTES,
-                maxBodyLength: IMAGE_MAX_BYTES,
                 headers: commonHeaders,
             })
             .then((res) => ({ data: res.data, contentType: res.headers['content-type'] }))
