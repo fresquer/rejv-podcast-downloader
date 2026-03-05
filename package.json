@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "sync": "node src/index.js",
     "run-sync": "node src/scripts/download-only.js",
+    "clean-episodes": "node src/scripts/clean-episodes.js",
     "test-discord": "node src/scripts/test-discord-webhook.js",
     "test-flow": "node src/scripts/test-full-flow.js"
   },
