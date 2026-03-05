@@ -8,6 +8,17 @@ const { fetchEpisodes } = require('./rss');
 
 const downloadDir = env.downloadDirectory;
 
+/** Escribir respuesta de axios (stream) a un archivo. Evita cargar todo el MP3 en RAM (importante en VPS con poca memoria). */
+function writeStreamToFile(response, filePath) {
+    return new Promise((resolve, reject) => {
+        const writer = fs.createWriteStream(filePath);
+        response.data.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+        response.data.on('error', reject);
+    });
+}
+
 function ensureDownloadDir() {
     if (!fs.existsSync(downloadDir)) {
         fs.mkdirSync(downloadDir, { recursive: true });
@@ -39,16 +50,16 @@ function sanitizeFileName(str) {
 }
 
 async function downloadAndTagEpisode(episodeUrl, fileName, metadata) {
+    const filePath = path.join(downloadDir, `${fileName}.mp3`);
     try {
         const response = await axios.get(episodeUrl, {
-            responseType: 'arraybuffer',
+            responseType: 'stream',
             timeout: env.downloadTimeoutMs,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             },
         });
-        const filePath = path.join(downloadDir, `${fileName}.mp3`);
-        fs.writeFileSync(filePath, response.data);
+        await writeStreamToFile(response, filePath);
         logger.info(`Downloaded: ${fileName}`);
 
         id3.write(
@@ -71,8 +82,8 @@ async function downloadAndTagEpisode(episodeUrl, fileName, metadata) {
 }
 
 /**
- * Descarga solo los episodios nuevos. Fase 1: comprobar todos los feeds sin delay y armar la lista de MP3.
- * Fase 2: descargar solo los que falten, con delay entre cada descarga.
+ * Descarga solo los episodios nuevos. Fase 1: comprobar todos los feeds (con pausa entre cada uno) y armar la lista de MP3.
+ * Fase 2: descargar solo los que falten, con delay entre cada descarga (streaming a disco para no saturar RAM en VPS).
  * Se mantiene siempre 1 archivo por podcast (el último).
  * @param {Array} podcasts - Lista de podcasts (desde config.loadShows())
  * @returns {Promise<{ episodes: Array, downloadedDir: string, stats: { podcastsChecked: number, totalEpisodesInFeeds: number, newDownloadsAttempted: number, newDownloadsOk: number, newDownloadsFailed: number } }>}
@@ -84,7 +95,11 @@ async function fetchAndDownloadLatest(podcasts) {
     let allEpisodes = [];
     const toDownload = [];
 
-    for (const podcast of podcasts) {
+    for (let p = 0; p < podcasts.length; p++) {
+        if (p > 0 && env.rssFetchDelayMs > 0) {
+            await new Promise((r) => setTimeout(r, env.rssFetchDelayMs));
+        }
+        const podcast = podcasts[p];
         logger.info(`Comprobando: ${podcast.nombre}`);
         const episodes = await fetchEpisodes(podcast);
         episodes.sort((a, b) => b.pubDate - a.pubDate);

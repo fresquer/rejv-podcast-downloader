@@ -19,8 +19,10 @@ const env = {
     sftpPassword: (process.env.AZURACAST_SFTP_PASSWORD || '').trim(),
     sftpRemotePath: (process.env.AZURACAST_SFTP_REMOTE_PATH || '').trim(),
     discordWebhookUrl: (process.env.DISCORD_WEBHOOK_URL || '').trim(),
-    /** Pausa en ms entre cada podcast al descargar (evita 500 por saturación del servidor). Ej: 2000 = 2 s. */
-    downloadDelayMs: parseInt(process.env.DOWNLOAD_DELAY_MS || '0', 10),
+    /** Pausa en ms entre cada descarga de MP3 (evita saturar VPS y servidor de origen). Por defecto 3s para VPS. Poner 0 para ejecución rápida en local. */
+    downloadDelayMs: parseInt(process.env.DOWNLOAD_DELAY_MS || '3000', 10),
+    /** Pausa en ms entre cada petición de feed RSS (evita saturar en la fase de listado). Por defecto 500ms. */
+    rssFetchDelayMs: parseInt(process.env.RSS_FETCH_DELAY_MS || '500', 10),
     /** Timeout en ms por descarga de MP3 (evita colgarse si el servidor no responde). */
     downloadTimeoutMs: parseInt(process.env.DOWNLOAD_TIMEOUT_MS || '120000', 10),
     downloadDirectory: path.join(PROJECT_ROOT, 'podcast_episodes'),
