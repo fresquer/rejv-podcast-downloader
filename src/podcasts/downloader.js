@@ -8,6 +8,23 @@ const { fetchEpisodes } = require('./rss');
 
 const downloadDir = env.downloadDirectory;
 
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 10000;
+const IMAGE_MAX_BYTES = 1024 * 1024; // 1 MB
+
+/** Inferir MIME de imagen desde Content-Type o extensión de la URL. */
+function getImageMime(contentType, imageUrl) {
+    if (contentType && (contentType.includes('jpeg') || contentType.includes('jpg'))) return 'image/jpeg';
+    if (contentType && contentType.includes('png')) return 'image/png';
+    if (contentType && contentType.includes('webp')) return 'image/webp';
+    try {
+        const ext = path.extname(new URL(imageUrl).pathname).toLowerCase();
+        if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+        if (ext === '.png') return 'image/png';
+        if (ext === '.webp') return 'image/webp';
+    } catch (_) {}
+    return 'image/jpeg';
+}
+
 /** Escribir respuesta de axios (stream) a un archivo. Evita cargar todo el MP3 en RAM (importante en VPS con poca memoria). */
 function writeStreamToFile(response, filePath) {
     return new Promise((resolve, reject) => {
@@ -51,28 +68,61 @@ function sanitizeFileName(str) {
 
 async function downloadAndTagEpisode(episodeUrl, fileName, metadata) {
     const filePath = path.join(downloadDir, `${fileName}.mp3`);
+    const commonHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+
+    let imagePromise = null;
+    if (metadata.imageUrl) {
+        imagePromise = axios
+            .get(metadata.imageUrl, {
+                responseType: 'arraybuffer',
+                timeout: IMAGE_DOWNLOAD_TIMEOUT_MS,
+                maxContentLength: IMAGE_MAX_BYTES,
+                maxBodyLength: IMAGE_MAX_BYTES,
+                headers: commonHeaders,
+            })
+            .then((res) => ({ data: res.data, contentType: res.headers['content-type'] }))
+            .catch((err) => {
+                logger.warn(`Cover image failed for ${fileName}: ${err.message}`);
+                return null;
+            });
+    }
+
     try {
         const response = await axios.get(episodeUrl, {
             responseType: 'stream',
             timeout: env.downloadTimeoutMs,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
+            headers: commonHeaders,
         });
         await writeStreamToFile(response, filePath);
         logger.info(`Downloaded: ${fileName}`);
 
-        id3.write(
-            {
-                title: metadata.title,
-                artist: metadata.artist,
-                album: metadata.album,
-                trackNumber: metadata.trackNumber,
-                genre: metadata.genre,
-                year: metadata.year,
-            },
-            filePath
-        );
+        let imageTag = null;
+        if (imagePromise) {
+            const imageResult = await imagePromise;
+            if (imageResult && imageResult.data && imageResult.data.byteLength > 0) {
+                const mime = getImageMime(imageResult.contentType, metadata.imageUrl);
+                imageTag = {
+                    mime,
+                    type: { id: 3 },
+                    description: 'Cover',
+                    imageBuffer: Buffer.from(imageResult.data),
+                };
+            }
+        }
+
+        const tags = {
+            title: metadata.title,
+            artist: metadata.artist,
+            album: metadata.album,
+            trackNumber: metadata.trackNumber,
+            genre: metadata.genre,
+            year: metadata.year,
+        };
+        if (imageTag) tags.image = imageTag;
+
+        id3.write(tags, filePath);
         logger.info(`Tagged: ${fileName}`);
         return true;
     } catch (err) {
@@ -127,6 +177,7 @@ async function fetchAndDownloadLatest(podcasts) {
                     trackNumber: latest.episodeNumber,
                     genre: 'Podcast',
                     year: latest.episodeDate,
+                    imageUrl: latest.image || null,
                 },
             });
         }
