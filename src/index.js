@@ -56,7 +56,7 @@ async function run() {
         }
     }
 
-    if (syncStats.removedFiles && syncStats.removedFiles.length > 0) {
+    if (syncStats.removedFiles.length > 0) {
         lines.push(`\n**Eliminados de AzuraCast (${syncStats.removedFiles.length}):**`);
         for (const f of syncStats.removedFiles) {
             lines.push(`• ${f}`);

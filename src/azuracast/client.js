@@ -94,10 +94,8 @@ function syncMediaLocal(localDir, mp3Filenames) {
     const existing = fs.readdirSync(destDir).filter((n) => fs.statSync(path.join(destDir, n)).isFile());
 
     const toRemove = existing.filter((n) => !wantSet.has(n));
-    const removedFiles = [];
     for (const name of toRemove) {
         fs.unlinkSync(path.join(destDir, name));
-        removedFiles.push(name);
         logger.info(`Eliminado (local): ${name}`);
     }
     if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos`);
@@ -110,7 +108,7 @@ function syncMediaLocal(localDir, mp3Filenames) {
         const needCopy = !fs.existsSync(dest) || fs.statSync(src).size !== fs.statSync(dest).size;
         if (needCopy) {
             fs.copyFileSync(src, dest);
-            const fileSizeMB = (fs.statSync(dest).size / (1024 * 1024)).toFixed(2);
+            const fileSizeMB = (fs.statSync(src).size / (1024 * 1024)).toFixed(2);
             logger.info(`Copiado: ${filename} (${fileSizeMB} MB)`);
             uploadedFiles.push(filename);
             copied++;
@@ -118,7 +116,7 @@ function syncMediaLocal(localDir, mp3Filenames) {
     }
     if (copied > 0) logger.info(`Sincronización local: ${copied} archivo(s) nuevo(s)/actualizado(s)`);
     else if (toRemove.length === 0) logger.info('Sincronización local: sin cambios.');
-    return { method: 'local', uploaded: copied, removed: toRemove.length, uploadedFiles, removedFiles };
+    return { method: 'local', uploaded: copied, removed: toRemove.length, uploadedFiles, removedFiles: toRemove };
 }
 
 /**
@@ -153,6 +151,7 @@ async function syncMediaSftp(localDir, mp3Filenames) {
         }
         const wantSet = new Set(mp3Filenames);
         const remoteFiles = (list || []).filter((f) => f.type === '-' && f.name);
+        const remoteFileNames = new Set(remoteFiles.map((f) => f.name));
         const toRemove = remoteFiles.filter((f) => !wantSet.has(f.name));
         const removedFiles = [];
         for (const f of toRemove) {
@@ -168,7 +167,7 @@ async function syncMediaSftp(localDir, mp3Filenames) {
         for (const filename of mp3Filenames) {
             const localPath = path.join(localDir, filename);
             const remoteFile = remotePath + '/' + filename;
-            const exists = remoteFiles.some((f) => f.name === filename);
+            const exists = remoteFileNames.has(filename);
             if (!exists) {
                 await sftp.put(localPath, remoteFile);
                 const fileSizeMB = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(2);
@@ -236,15 +235,11 @@ async function syncMedia(localDir, mp3Filenames) {
         if (name) serverByBasename.set(name, file);
     }
 
-    const toRemove = files.filter((f) => {
-        const name = path.basename(f.path || f.name || f.text || '');
-        return name && !wantSet.has(name);
-    });
+    const toRemove = [...serverByBasename.entries()].filter(([name]) => !wantSet.has(name));
     const removedFiles = [];
-    for (const file of toRemove) {
+    for (const [name, file] of toRemove) {
         const mediaId = file.id ?? file.media_id;
         if (mediaId == null) continue;
-        const name = path.basename(file.path || file.text || String(mediaId));
         try {
             await deleteFile(stationId, mediaId);
             removedFiles.push(name);
