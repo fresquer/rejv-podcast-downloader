@@ -36,7 +36,7 @@ const env = {
 async function loadShows() {
     const { data } = await axios.get(SHOWS_API_URL, { timeout: 15000 });
     if (!Array.isArray(data)) return [];
-    return data.filter((show) => show.rss && String(show.rss).trim() !== '');
+    return data.filter((show) => !show.desactivado && show.rss && String(show.rss).trim() !== '');
 }
 
 function getApiBase() {
