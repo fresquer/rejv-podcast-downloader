@@ -94,13 +94,16 @@ function syncMediaLocal(localDir, mp3Filenames) {
     const existing = fs.readdirSync(destDir).filter((n) => fs.statSync(path.join(destDir, n)).isFile());
 
     const toRemove = existing.filter((n) => !wantSet.has(n));
+    const removedFiles = [];
     for (const name of toRemove) {
         fs.unlinkSync(path.join(destDir, name));
+        removedFiles.push(name);
         logger.info(`Eliminado (local): ${name}`);
     }
     if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos`);
 
     let copied = 0;
+    const uploadedFiles = [];
     for (const filename of mp3Filenames) {
         const src = path.join(localDir, filename);
         const dest = path.join(destDir, filename);
@@ -109,12 +112,13 @@ function syncMediaLocal(localDir, mp3Filenames) {
             fs.copyFileSync(src, dest);
             const fileSizeMB = (fs.statSync(dest).size / (1024 * 1024)).toFixed(2);
             logger.info(`Copiado: ${filename} (${fileSizeMB} MB)`);
+            uploadedFiles.push(filename);
             copied++;
         }
     }
     if (copied > 0) logger.info(`Sincronización local: ${copied} archivo(s) nuevo(s)/actualizado(s)`);
     else if (toRemove.length === 0) logger.info('Sincronización local: sin cambios.');
-    return { method: 'local', uploaded: copied, removed: toRemove.length };
+    return { method: 'local', uploaded: copied, removed: toRemove.length, uploadedFiles, removedFiles };
 }
 
 /**
@@ -150,14 +154,17 @@ async function syncMediaSftp(localDir, mp3Filenames) {
         const wantSet = new Set(mp3Filenames);
         const remoteFiles = (list || []).filter((f) => f.type === '-' && f.name);
         const toRemove = remoteFiles.filter((f) => !wantSet.has(f.name));
+        const removedFiles = [];
         for (const f of toRemove) {
             const filePath = remotePath + '/' + f.name;
             await sftp.delete(filePath);
+            removedFiles.push(f.name);
             logger.info(`Eliminado (SFTP): ${f.name}`);
         }
         if (toRemove.length > 0) logger.info(`Eliminados ${toRemove.length} archivos obsoletos en remoto`);
 
         let uploaded = 0;
+        const uploadedFiles = [];
         for (const filename of mp3Filenames) {
             const localPath = path.join(localDir, filename);
             const remoteFile = remotePath + '/' + filename;
@@ -166,12 +173,13 @@ async function syncMediaSftp(localDir, mp3Filenames) {
                 await sftp.put(localPath, remoteFile);
                 const fileSizeMB = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(2);
                 logger.info(`Subido (SFTP): ${filename} (${fileSizeMB} MB)`);
+                uploadedFiles.push(filename);
                 uploaded++;
             }
         }
         if (uploaded > 0) logger.info(`SFTP: ${uploaded} archivo(s) nuevo(s) subido(s)`);
         else if (toRemove.length === 0) logger.info('SFTP: sin cambios.');
-        return { method: 'sftp', uploaded, removed: toRemove.length };
+        return { method: 'sftp', uploaded, removed: toRemove.length, uploadedFiles, removedFiles };
     } finally {
         await sftp.end();
     }
@@ -232,12 +240,15 @@ async function syncMedia(localDir, mp3Filenames) {
         const name = path.basename(f.path || f.name || f.text || '');
         return name && !wantSet.has(name);
     });
+    const removedFiles = [];
     for (const file of toRemove) {
         const mediaId = file.id ?? file.media_id;
         if (mediaId == null) continue;
+        const name = path.basename(file.path || file.text || String(mediaId));
         try {
             await deleteFile(stationId, mediaId);
-            logger.info(`Eliminado: ${file.path || file.text || mediaId}`);
+            removedFiles.push(name);
+            logger.info(`Eliminado: ${name}`);
         } catch (err) {
             logger.error(`Error eliminando ${mediaId}:`, err.response?.data?.message || err.message);
         }
@@ -246,6 +257,7 @@ async function syncMedia(localDir, mp3Filenames) {
 
     const toUpload = mp3Filenames.filter((name) => !serverByBasename.has(name));
     let uploaded = 0;
+    const uploadedFiles = [];
     for (let i = 0; i < toUpload.length; i++) {
         const filename = toUpload[i];
         const localPath = path.join(localDir, filename);
@@ -253,6 +265,7 @@ async function syncMedia(localDir, mp3Filenames) {
         try {
             await uploadFile(stationId, localPath, filename);
             logger.info(`[${i + 1}/${toUpload.length}] Subido: ${filename} (${fileSizeMB} MB)`);
+            uploadedFiles.push(filename);
             uploaded++;
         } catch (err) {
             logger.error(`Error subiendo ${filename}:`, err.response?.data?.message || err.message);
@@ -261,7 +274,7 @@ async function syncMedia(localDir, mp3Filenames) {
     if (uploaded > 0) logger.info(`Subidos ${uploaded} archivo(s) nuevo(s)`);
     else if (toRemove.length === 0) logger.info('Sin cambios en AzuraCast.');
     await restartStationIfConfigured();
-    return { method: 'api', uploaded, removed: toRemove.length };
+    return { method: 'api', uploaded, removed: toRemove.length, uploadedFiles, removedFiles };
 }
 
 module.exports = {

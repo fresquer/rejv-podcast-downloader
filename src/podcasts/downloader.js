@@ -141,6 +141,7 @@ async function fetchAndDownloadLatest(podcasts) {
     // Fase 1: comprobar todos los feeds sin delay y construir lista de qué descargar
     let allEpisodes = [];
     const toDownload = [];
+    const skippedEpisodes = [];
 
     for (let p = 0; p < podcasts.length; p++) {
         if (p > 0 && env.rssFetchDelayMs > 0) {
@@ -160,6 +161,7 @@ async function fetchAndDownloadLatest(podcasts) {
 
             if (isEpisodeDownloaded(fileName)) {
                 logger.info(`Ya existe (omitido): ${fileName}`);
+                skippedEpisodes.push(programName);
                 continue;
             }
 
@@ -187,6 +189,8 @@ async function fetchAndDownloadLatest(podcasts) {
 
     let newDownloadsOk = 0;
     let newDownloadsFailed = 0;
+    const downloadedEpisodes = [];
+    const failedEpisodes = [];
     if (toDownload.length > 0) {
         logger.info(`Descargando ${toDownload.length} episodio(s) nuevo(s)...`);
         for (let i = 0; i < toDownload.length; i++) {
@@ -201,8 +205,13 @@ async function fetchAndDownloadLatest(podcasts) {
                 logger.info(`Eliminado episodio anterior: ${oldFile}`);
             }
             const ok = await downloadAndTagEpisode(item.mp3, item.fileName, item.metadata);
-            if (ok) newDownloadsOk++;
-            else newDownloadsFailed++;
+            if (ok) {
+                newDownloadsOk++;
+                downloadedEpisodes.push({ show: item.metadata.artist, title: item.metadata.title });
+            } else {
+                newDownloadsFailed++;
+                failedEpisodes.push({ show: item.metadata.artist, title: item.metadata.title });
+            }
         }
     }
 
@@ -212,6 +221,9 @@ async function fetchAndDownloadLatest(podcasts) {
         newDownloadsAttempted: toDownload.length,
         newDownloadsOk,
         newDownloadsFailed,
+        downloadedEpisodes,
+        failedEpisodes,
+        skippedEpisodes,
     };
     return { episodes: allEpisodes, downloadedDir: downloadDir, stats };
 }

@@ -38,15 +38,35 @@ async function run() {
     const syncStats = await syncMedia(downloadDir, mp3Files);
 
     const duration = formatDuration(Date.now() - startTime);
-    const summary = [
-        `✅ **Rejv Sync OK** – ${formatDate()}`,
-        `**Descargas:** ${downloadStats.podcastsChecked} podcasts, ${downloadStats.totalEpisodesInFeeds} episodios en feeds · ${downloadStats.newDownloadsAttempted} nuevos (${downloadStats.newDownloadsOk} OK, ${downloadStats.newDownloadsFailed} fallos)`,
-        `**Sync (${syncStats.method.toUpperCase()}):** ${syncStats.uploaded} subidos, ${syncStats.removed} eliminados`,
-        `⏱ ${duration}`,
-    ].join('\n');
+    const lines = [`✅ **Rejv Sync OK** – ${formatDate()} · ⏱ ${duration}`];
+
+    if (downloadStats.downloadedEpisodes.length > 0) {
+        lines.push(`\n**Nuevos episodios (${downloadStats.newDownloadsOk}/${downloadStats.podcastsChecked}):**`);
+        for (const ep of downloadStats.downloadedEpisodes) {
+            lines.push(`• ${ep.show} – ${ep.title}`);
+        }
+    } else {
+        lines.push(`\n**Sin cambios:** todos los ${downloadStats.podcastsChecked} podcasts al día`);
+    }
+
+    if (downloadStats.failedEpisodes.length > 0) {
+        lines.push(`\n**Fallos (${downloadStats.failedEpisodes.length}):**`);
+        for (const ep of downloadStats.failedEpisodes) {
+            lines.push(`• ❌ ${ep.show} – ${ep.title}`);
+        }
+    }
+
+    if (syncStats.removedFiles && syncStats.removedFiles.length > 0) {
+        lines.push(`\n**Eliminados de AzuraCast (${syncStats.removedFiles.length}):**`);
+        for (const f of syncStats.removedFiles) {
+            lines.push(`• ${f}`);
+        }
+    }
+
+    lines.push(`\n**Sync ${syncStats.method.toUpperCase()}:** ${syncStats.uploaded} subidos · ${syncStats.removed} eliminados`);
 
     logger.info('=== Sincronización finalizada ===');
-    await sendDiscordMessage(summary);
+    await sendDiscordMessage(lines.join('\n'));
 }
 
 run().catch(async (err) => {
